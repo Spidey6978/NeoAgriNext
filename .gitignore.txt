@@ -1,0 +1,19 @@
+# Python build files
+__pycache__/
+*.py[cod]
+
+# Virtual Environment (Very Important!)
+venv/
+env/
+
+# Database & Cache (Keep local)
+*.db
+*.sqlite3
+agrinext_cache.db
+
+# Environment Variables (Protect your API keys!)
+.env
+
+# OS specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,11 @@
+python -m uvicorn app.main:app --reload
+ngrok http 8000
+
+venv\Scripts\Activate.bat
+
+
+
+python -m uvicorn app.visualizer:app --port 8001 --reload
+4.  Open your browser to `http://localhost:8001`. You will see your data live!
+https://touchily-steamerless-alyssa.ngrok-free.dev/
+ngrok http --domain=touchily-steamerless-alyssa.ngrok-free.dev 8000

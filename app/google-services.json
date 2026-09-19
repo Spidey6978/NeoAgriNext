@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "586793372353",
+    "project_id": "agrinext-3a7a9",
+    "storage_bucket": "agrinext-3a7a9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:586793372353:android:c781d4165c6f5c47bf2240",
+        "android_client_info": {
+          "package_name": "com.example.agrinext"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCj5HgY8554as-oarXyUluUVJlnn8jLzHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
