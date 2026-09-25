@@ -4,6 +4,8 @@ import json
 import time
 from app.config import settings
 from app.services.cache_service import DB_NAME
+from geopy.geocoders import Nominatim
+from app.services.imd_service import get_imd_ground_reading
 
 # Remove hardcoded key if it exists, rely on settings
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
@@ -87,3 +89,33 @@ async def get_current_weather(lat: float, lon: float):
                 
         except Exception as e:
             return {"error": str(e)}
+
+async def _reverse_geocode_admin(lat, lon):
+    try:
+        geolocator = Nominatim(user_agent=settings.USER_AGENT)
+        loc = geolocator.reverse((lat, lon), language="en", timeout=5)
+        if loc:
+            addr = loc.raw.get("address", {})
+            district = addr.get("state_district") or addr.get("county") or ""
+            state = addr.get("state", "")
+            return district, state
+    except Exception as e:
+        print(f"⚠️ Reverse geocode failed: {e}")
+    return "", ""
+
+
+async def get_hyperlocal_weather(lat: float, lon: float):
+    """
+    Combines OpenWeatherMap (city-level) with the nearest IMD ground
+    station (sub-district level).
+    """
+    district, state = await _reverse_geocode_admin(lat, lon)
+    openweather_data = await get_current_weather(lat, lon)
+    imd_data = await get_imd_ground_reading(lat, lon, state)
+
+    return {
+        "location": {"district": district, "state": state, "lat": lat, "lon": lon},
+        "openweathermap": openweather_data,
+        "imd_ground_station": imd_data,
+        "primary_source": "IMD AWS/ARG" if imd_data else "OpenWeatherMap",
+    }

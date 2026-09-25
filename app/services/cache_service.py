@@ -109,8 +109,8 @@ def get_weather_cache(lat, lon):
 def save_weather_cache(lat, lon, data):
     save_to_cache(f"weather_{round(lat, 2)}_{round(lon, 2)}", data, "weather")
 
-def save_gemini_cache(lat, lon, crop, data):
+def save_gemini_cache(lat, lon, crop, data, ttl_seconds=86400):
     save_to_cache(f"gemini_{round(lat, 2)}_{round(lon, 2)}_{crop.lower()}", data, "gemini_advice")
-    
-def get_gemini_cache(lat, lon, crop):
-    return get_from_cache(f"gemini_{round(lat, 2)}_{round(lon, 2)}_{crop.lower()}")
+
+def get_gemini_cache(lat, lon, crop, max_age_seconds=86400):
+    return get_from_cache(f"gemini_{round(lat, 2)}_{round(lon, 2)}_{crop.lower()}", max_age_seconds)

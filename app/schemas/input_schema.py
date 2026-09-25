@@ -23,13 +23,6 @@ class MarketAction(BaseModel):
     action: str
     reason: str
 
-class AdvisoryResponse(BaseModel):
-    irrigation: IrrigationDecision
-    crop_health: CropHealth
-    market: MarketAction
-    gemini_explanation: str
-
-
 # --- NEW: THE ROADMAP SCHEMA ---
 class CropRoadmap(BaseModel):
     name: str

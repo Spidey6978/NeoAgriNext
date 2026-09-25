@@ -1,29 +1,60 @@
-import google.generativeai as genai
-from geopy.geocoders import Nominatim
-from app.config import settings
 import json
 import asyncio
 import requests
 from bs4 import BeautifulSoup
 import re
+from geopy.geocoders import Nominatim
+from google import genai
+from app.config import settings
 
-# Configure Gemini
-genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel(settings.GEMINI_MODEL)
+# Initialize new Google GenAI Client
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+# Updated list of valid, active models for google-genai
+MODEL_CANDIDATES = [
+    getattr(settings, "GEMINI_MODEL", None),
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
+MODEL_CANDIDATES = [m for m in dict.fromkeys(MODEL_CANDIDATES) if m]
+
+async def _generate_recommendation_with_failover(prompt, loop):
+    """Failover generator that cycles through available models on 429/404 errors."""
+    backoffs = [5, 10]
+    for model_name in MODEL_CANDIDATES:
+        for attempt in range(len(backoffs) + 1):
+            try:
+                # Synchronous client call inside executor
+                response = await loop.run_in_executor(
+                    None, 
+                    lambda: client.models.generate_content(
+                        model=model_name,
+                        contents=prompt
+                    )
+                )
+                return response.text
+            except Exception as e:
+                msg = str(e).lower()
+                if "429" in msg or "quota" in msg:
+                    if attempt < len(backoffs):
+                        await asyncio.sleep(backoffs[attempt])
+                        continue
+                    print(f"⚠️ Model {model_name} rate limited. Switching candidate...")
+                    break
+                if "404" in msg or "not found" in msg:
+                    print(f"⚠️ Model {model_name} unavailable. Switching candidate...")
+                    break
+                raise e
+    raise RuntimeError("All Gemini models failed for Crop Recommendations.")
 
 # --- LAYER 2: REAL-TIME SCRAPER (The "Non-Cheating" Fallback) ---
 def scrape_crops_from_web(state_name):
-    """
-    If AI fails, we SCRAPE Wikipedia for the state's agriculture 
-    and extract crop names mentioned in the text.
-    """
     print(f"🕷️ SCRAPER: Fetching real agri-data for {state_name}...")
     try:
-        # Try specific agriculture page first
         url = f"https://en.wikipedia.org/wiki/Agriculture_in_{state_name}"
         response = requests.get(url, timeout=3)
         
-        # If that fails, try the main state page
         if response.status_code != 200:
             url = f"https://en.wikipedia.org/wiki/{state_name}"
             response = requests.get(url, timeout=3)
@@ -32,11 +63,8 @@ def scrape_crops_from_web(state_name):
             return []
 
         soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Get main text content
         text = soup.get_text().lower()
         
-        # Scan for common crops (Real Intelligence based on actual text mentions)
         common_crops = {
             "rice": {"season": "Kharif", "duration": "120 days"},
             "wheat": {"season": "Rabi", "duration": "140 days"},
@@ -59,7 +87,6 @@ def scrape_crops_from_web(state_name):
         
         found_crops = []
         for crop, details in common_crops.items():
-            # Check if the crop word appears significantly in the text
             if crop in text:
                 found_crops.append({
                     "name": crop.capitalize(),
@@ -71,7 +98,8 @@ def scrape_crops_from_web(state_name):
                     "tool": "Standard Agri-Tools",
                     "market_potential": "High (Locally Grown)"
                 })
-                if len(found_crops) >= 4: break # Limit to top 4 matches
+                if len(found_crops) >= 4: 
+                    break
         
         if found_crops:
             print(f"✅ SCRAPER FOUND: {[c['name'] for c in found_crops]}")
@@ -80,7 +108,7 @@ def scrape_crops_from_web(state_name):
     except Exception as e:
         print(f"⚠️ Scraper Error: {e}")
     
-    return [] # Failed to scrape
+    return []
 
 # --- LAYER 3: STATIC BACKUP (Last Resort) ---
 STATE_CROP_MAP = {
@@ -101,23 +129,20 @@ async def get_crop_recommendations(lat: float, lon: float):
     
     location_name = f"Lat: {lat:.2f}, Lon: {lon:.2f}"
     state_context = "India"
+    loop = asyncio.get_running_loop()
     
     # 1. Geocoding
     try:
-        loop = asyncio.get_event_loop()
         geolocator = Nominatim(user_agent=settings.USER_AGENT)
-        
-        def do_reverse():
-            return geolocator.reverse((lat, lon), language='en', timeout=5)
-            
-        location = await loop.run_in_executor(None, do_reverse)
+        location = await loop.run_in_executor(None, lambda: geolocator.reverse((lat, lon), language='en', timeout=5))
         
         if location:
             address = location.raw.get('address', {})
             district = address.get('state_district', '') or address.get('county', '')
             state = address.get('state', '')
-            if state: state_context = state
-            location_name = f"{district}, {state}"
+            if state: 
+                state_context = state
+            location_name = f"{district}, {state}" if district else state
     except Exception as e:
         print(f"⚠️ Geocoding Warning: {e}")
 
@@ -132,7 +157,7 @@ async def get_crop_recommendations(lat: float, lon: float):
         Suggest top 3 most profitable crops for this specific location.
         
         CRITICAL OUTPUT FORMAT:
-        Return ONLY a raw JSON array. Do NOT use markdown. Do NOT write "Here is the list".
+        Return ONLY a raw JSON array. Do NOT use markdown code blocks.
         
         JSON Structure:
         [
@@ -149,14 +174,18 @@ async def get_crop_recommendations(lat: float, lon: float):
         ]
         """
         
-        response = await loop.run_in_executor(None, model.generate_content, prompt)
-        raw_text = response.text
+        raw_text = await _generate_recommendation_with_failover(prompt, loop)
         print(f"🤖 AI RAW OUTPUT: {raw_text[:100]}...") 
 
         cleaned_json = raw_text.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\[.*\]', cleaned_json, re.DOTALL)
+        if match:
+            cleaned_json = match.group(0)
+
         crops_data = json.loads(cleaned_json)
         
-        if not crops_data: raise ValueError("Empty AI Response")
+        if not crops_data: 
+            raise ValueError("Empty AI Response")
             
         return {
             "location": location_name,
@@ -166,22 +195,19 @@ async def get_crop_recommendations(lat: float, lon: float):
     except Exception as e:
         print(f"❌ AI Failed ({e}). Switching to Layer 2 (Live Web Scraper).")
         
-        # 3. Try Web Scraper (Layer 2 - Real Data)
+        # 3. Try Web Scraper (Layer 2)
         scraped_data = await loop.run_in_executor(None, scrape_crops_from_web, state_context)
-        
         if scraped_data:
             return {
                 "location": location_name,
                 "crops": scraped_data
             }
             
-        # 4. Use State-Based Fallback (Layer 3 - Safety)
+        # 4. Use State-Based Fallback (Layer 3)
         print("⚠️ All Real-Time Methods Failed. Using State Database.")
-        
         fallback_names = STATE_CROP_MAP.get(state_context, ["Rice", "Wheat", "Maize"])[:3]
-        fallback_crops = []
-        for name in fallback_names:
-            fallback_crops.append({
+        fallback_crops = [
+            {
                 "name": name,
                 "season": "Regional Season",
                 "sowing_months": "Standard",
@@ -190,7 +216,8 @@ async def get_crop_recommendations(lat: float, lon: float):
                 "fertilizer": "Standard NPK",
                 "tool": "Standard Tools",
                 "market_potential": "High"
-            })
+            } for name in fallback_names
+        ]
             
         return {
             "location": location_name,

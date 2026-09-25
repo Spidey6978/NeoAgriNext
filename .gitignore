@@ -29,3 +29,4 @@ venv/
 .venv/
 .vscode/
 .ngrok.exe.old
+gee-service-account.json
