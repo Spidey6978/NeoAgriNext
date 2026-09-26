@@ -1,13 +1,14 @@
+import os
 import sqlite3
 import json
 import time
 
-DB_NAME = "agrinext_cache.db"
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DB_NAME = os.path.join(_BASE_DIR, "agrinext_cache.db")
+
 
 def init_db():
-    """
-    Creates a professional, ML-ready database schema.
-    """
+    print(f"💽 CACHE DB path: {DB_NAME}")
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     

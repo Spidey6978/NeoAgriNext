@@ -11,9 +11,14 @@ client = genai.Client(api_key=settings.GEMINI_API_KEY)
 # Updated list of valid, active models for google-genai
 MODEL_CANDIDATES = [
     getattr(settings, "GEMINI_MODEL", None),
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-3.8-flash",        # Google's explicit recommended replacement for 2.5-flash
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-pro-latest",
+    "gemini-2.5-pro",
 ]
 MODEL_CANDIDATES = [m for m in dict.fromkeys(MODEL_CANDIDATES) if m]
 

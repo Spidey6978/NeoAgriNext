@@ -9,12 +9,26 @@ import seaborn as sns
 from datetime import datetime
 from collections import Counter
 import warnings
+import math
 
 # Use non-interactive backend for server environments
 import matplotlib
 matplotlib.use('Agg')
 
 from app.services.cache_service import DB_NAME
+def sanitize_json_data(obj):
+    """Recursively replaces NaN, Inf, and -Inf with None or standard types."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: sanitize_json_data(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_json_data(v) for v in obj]
+    elif isinstance(obj, np.generic):
+        return sanitize_json_data(obj.item())
+    return obj
 
 # =============================================================================
 # SECTION A: SETUP & CONFIGURATION
@@ -37,7 +51,7 @@ class AgriAnalyticsEngine:
         self.processed_data = None
         self.insights = {}
         self.figures = {}
-
+    
     # =========================================================================
     # SECTION B: DATA LOADING & INGESTION
     # =========================================================================
@@ -259,14 +273,14 @@ class AgriAnalyticsEngine:
     def run_pipeline(self):
         """
         Orchestrates the full analysis pipeline.
-        Returns: Tuple(Insights Dict, Plots Dict)
+        Returns: Dict containing sanitized insights and visualizations.
         """
         self.load_data()
         self.clean_and_engineer()
         insights = self.perform_eda()
         self.generate_visualizations()
         
-        return {
+        result = {
             "meta": {
                 "generated_at": datetime.now().isoformat(),
                 "status": "success"
@@ -274,6 +288,9 @@ class AgriAnalyticsEngine:
             "insights": insights,
             "visualizations": self.figures
         }
+
+        # Sanitize out-of-range floats (NaN / Inf)
+        return sanitize_json_data(result)
 
 # --- STANDALONE TESTING ---
 if __name__ == "__main__":

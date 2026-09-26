@@ -1,93 +1,62 @@
 import json
-import sqlite3
-import time
 import asyncio
 import re
 from google import genai
 from google.genai import types
 from app.config import settings
 from app.schemas.input_schema import CropInput
-from app.services.cache_service import DB_NAME
+from app.services.cache_service import get_gemini_cache, save_gemini_cache
 
 # --- CONFIGURATION ---
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-# Safety settings formatted for google-genai
 SAFETY_SETTINGS = [
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE,
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE,
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE,
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE,
-    ),
+    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
+    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_NONE),
 ]
+CONFIG = types.GenerateContentConfig(safety_settings=SAFETY_SETTINGS)
 
-CONFIG = types.GenerateContentConfig(
-    safety_settings=SAFETY_SETTINGS
-)
-
-# Updated list of valid, active models for google-genai
+# Confirmed present in your own client.models.list() output. Ordered so
+# early failures land on a DIFFERENT model family (separate free-tier quota).
 MODEL_CANDIDATES = [
     getattr(settings, "GEMINI_MODEL", None),
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-3.8-flash",        # Google's explicit recommended replacement for 2.5-flash
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-pro-latest",
+    "gemini-2.5-pro",
 ]
 MODEL_CANDIDATES = [m for m in dict.fromkeys(MODEL_CANDIDATES) if m]
 
 _ACTIVE_MODEL_NAME = None
-_BLACKLISTED_MODELS = set()  # models confirmed dead this run — never retry them
+_BLACKLISTED_MODELS = set()
 
 
-def _resolve_working_model():
-    """
-    Picks the first candidate that (a) client.models.list() shows, and
-    (b) hasn't already failed a real generate_content call this run.
-    """
-    global _ACTIVE_MODEL_NAME
-
-    if _ACTIVE_MODEL_NAME is not None:
-        return _ACTIVE_MODEL_NAME
-
-    available = None
+def _list_available_models():
     try:
-        # Fetch available models using google-genai SDK
-        available_models = list(client.models.list(config={'query_base': True}))
-        
-        # Normalize model names by stripping 'models/' prefix
         available = set()
-        for m in available_models:
-            model_name = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
-            available.add(model_name)
-
-        print(f"🔍 Available Gemini Models: {available}")
+        for m in client.models.list(config={"query_base": True}):
+            name = m.name.replace("models/", "") if hasattr(m, "name") else str(m)
+            available.add(name)
+        return available
     except Exception as e:
         print(f"⚠️ Could not list Gemini models ({e}); trying candidates blind.")
+        return None
 
+
+def _pick_next_candidate(available):
     for candidate in MODEL_CANDIDATES:
         if candidate in _BLACKLISTED_MODELS:
             continue
-        # If listing worked, ensure the candidate exists in available models
         if available is not None and candidate not in available:
             continue
-        
-        _ACTIVE_MODEL_NAME = candidate
-        print(f"✅ Gemini model locked in: {candidate}")
-        return _ACTIVE_MODEL_NAME
-
-    raise RuntimeError(
-        f"No working Gemini model found. Blacklisted this run: {_BLACKLISTED_MODELS or 'none'}"
-    )
+        return candidate
+    return None
 
 
 def _invalidate_active_model():
@@ -98,29 +67,32 @@ def _invalidate_active_model():
     _ACTIVE_MODEL_NAME = None
 
 
-async def _generate_with_failover(prompt, loop, max_model_switches=3):
-    """
-    - 404 / retired model  -> blacklist permanently, move to next candidate.
-    - 429 / quota exceeded -> brief backoff, retry same model twice, then move to next candidate.
-    """
+async def _generate_with_failover(prompt, loop, max_model_switches=6):
+    global _ACTIVE_MODEL_NAME
+    available = _list_available_models()
     switches = 0
+
     while True:
-        model_name = _resolve_working_model()
+        if _ACTIVE_MODEL_NAME is None:
+            _ACTIVE_MODEL_NAME = _pick_next_candidate(available)
+            if _ACTIVE_MODEL_NAME is None:
+                raise RuntimeError(f"No working Gemini model left. Blacklisted: {_BLACKLISTED_MODELS or 'none'}")
+            print(f"➡️ Trying Gemini model: {_ACTIVE_MODEL_NAME}")
+
+        model_name = _ACTIVE_MODEL_NAME
         backoffs = [2, 5]
 
         for attempt in range(len(backoffs) + 1):
             try:
                 response = await loop.run_in_executor(
                     None,
-                    lambda: client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=CONFIG
-                    )
+                    lambda: client.models.generate_content(model=model_name, contents=prompt, config=CONFIG),
                 )
+                print(f"✅ Gemini responded successfully using: {model_name}")
                 return response
             except Exception as e:
                 msg = str(e).lower()
+                print(f"❌ '{model_name}' failed: {e}")
 
                 if "429" in msg or "quota" in msg:
                     if attempt < len(backoffs):
@@ -133,59 +105,14 @@ async def _generate_with_failover(prompt, loop, max_model_switches=3):
                     break
 
                 if "404" in msg or "no longer available" in msg or "not found" in msg:
-                    print(f"⚠️ Candidate '{model_name}' unavailable.")
                     _invalidate_active_model()
                     break
 
-                raise e  # safety blocks etc. bubble straight up
+                raise
 
         switches += 1
         if switches >= max_model_switches:
             raise RuntimeError(f"Gemini failing on every available model (last: {model_name}).")
-
-
-# --- CACHE HELPERS ---
-def get_gemini_cache(lat, lon, crop_name):
-    key = f"gemini_{round(lat, 2)}_{round(lon, 2)}_{crop_name.lower()}"
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [r[0] for r in cursor.fetchall()]
-        table_name = "crop_cache" if "crop_cache" in tables else "api_cache"
-        if table_name not in tables:
-            return None
-        cursor.execute(f"SELECT data, timestamp FROM {table_name} WHERE location_key = ?", (key,))
-        result = cursor.fetchone()
-        conn.close()
-        if result:
-            data_json, timestamp = result
-            if time.time() - timestamp < 86400:
-                print(f"⚡ CACHE HIT: Found AI advice for {key}")
-                return json.loads(data_json)
-    except Exception as e:
-        print(f"⚠️ Cache Read Error: {e}")
-    return None
-
-
-def save_gemini_cache(lat, lon, crop_name, data, ttl_seconds=86400):
-    key = f"gemini_{round(lat, 2)}_{round(lon, 2)}_{crop_name.lower()}"
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [r[0] for r in cursor.fetchall()]
-        table_name = "crop_cache" if "crop_cache" in tables else "api_cache"
-        if table_name not in tables:
-            return
-        cursor.execute(f'''
-            INSERT OR REPLACE INTO {table_name} (location_key, data, timestamp)
-            VALUES (?, ?, ?)
-        ''', (key, json.dumps(data), time.time()))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"⚠️ Cache Write Error: {e}")
 
 
 def clean_and_parse_json(text):
@@ -198,67 +125,62 @@ def clean_and_parse_json(text):
     except Exception:
         return None
 
-# --- HELPER FUNCTIONS FOR GEMINI SERVICE ---
 
 def _build_prompt(weather_data, crop_input, market_data):
-    """Constructs a structured JSON prompt for Gemini."""
+    """Matches AdvisoryResponse / CropRoadmap in input_schema.py and the Android app's expected shape."""
+    region_str = market_data.get('meta', {}).get('region', 'India')
+    currency_symbol = market_data.get('meta', {}).get('currency', '₹')
+    expert_persona = (
+        "Act as an expert Indian Agronomist."
+        if currency_symbol == '₹' or "India" in region_str
+        else "Act as an expert International Agronomist."
+    )
+
     return f"""
-You are an expert agronomist AI analyzing farming data.
-Analyze the following crop conditions and provide actionable insights.
+    {expert_persona} Provide analysis for a farmer growing {crop_input.crop} in {region_str}.
 
-CROP & LOCATION:
-- Crop: {crop_input.crop}
-- Latitude: {crop_input.lat}, Longitude: {crop_input.lon}
+    DATA:
+    - Crop: {crop_input.crop}
+    - Market Strategy: {market_data.get('advisory', {}).get('action', 'N/A')} ({market_data.get('advisory', {}).get('reason', 'N/A')})
+    - Weather: {weather_data.get('description')}, Temp: {weather_data.get('temp')}°C
 
-WEATHER DATA:
-{json.dumps(weather_data, indent=2)}
+    TASK:
+    Return a JSON object with this EXACT structure:
+    {{
+        "explanation": "A short 3-sentence advice summary.",
+        "roadmap": {{
+            "name": "{crop_input.crop}",
+            "temp_range": "e.g. 20-30C",
+            "ph_range": "e.g. 6.0-7.0",
+            "water_requirement": "e.g. 500mm",
+            "sowing_window": "Best sowing months",
+            "harvest_window": "Best harvest months",
+            "duration_days": 120,
+            "fertilizer_plan": "Short fertilizer tip",
+            "pests": ["Pest1", "Pest2"]
+        }}
+    }}
+    """
 
-MARKET DATA:
-{json.dumps(market_data, indent=2)}
-
-Respond strictly in valid JSON format with the following keys:
-{{
-  "recommendations": ["list of actionable advice"],
-  "risk_assessment": "low/medium/high description",
-  "market_insight": "summary of market trend",
-  "yield_forecast": "estimated impact"
-}}
-"""
-
-
-def _parse_gemini_response(response_text):
-    """Cleans and parses JSON returned by Gemini."""
-    parsed = clean_and_parse_json(response_text)
-    if parsed:
-        return parsed
-    return {
-        "recommendations": [response_text],
-        "risk_assessment": "Unknown (unstructured response)",
-        "market_insight": "N/A",
-        "yield_forecast": "N/A"
-    }
 
 def _get_fallback_data(crop_name, error_msg):
-    """Provides safe default fallback data if Gemini API fails."""
     return {
-        "recommendations": [
-            f"Unable to fetch live AI advice for {crop_name} due to service error.",
-            "Follow standard regional agronomic practices and monitor soil moisture."
-        ],
-        "risk_assessment": "Data currently unavailable",
-        "market_insight": "Check local mandi rates manually.",
-        "yield_forecast": "Neutral",
-        "error_details": error_msg
+        "explanation": f"Detailed AI advice is currently unavailable ({error_msg[:50]}). Please follow standard agricultural practices for {crop_name}.",
+        "roadmap": {
+            "name": crop_name,
+            "temp_range": "20-30°C",
+            "ph_range": "6.0-7.0",
+            "water_requirement": "Moderate",
+            "sowing_window": "June-July",
+            "harvest_window": "Oct-Nov",
+            "duration_days": 120,
+            "fertilizer_plan": "Apply balanced NPK fertilizer.",
+            "pests": ["Aphids", "Bollworms"],
+        },
     }
 
-async def get_gemini_advice(weather_data, crop_input, market_data):
-    # 1. Define cache_key upfront
-    lat_round = round(crop_input.lat, 2)
-    lon_round = round(crop_input.lon, 2)
-    crop_clean = crop_input.crop.lower().strip()
-    cache_key = f"gemini_{lat_round}_{lon_round}_{crop_clean}"
 
-    # 2. Cache check
+async def get_gemini_advice(weather_data, crop_input: CropInput, market_data):
     cached_data = get_gemini_cache(crop_input.lat, crop_input.lon, crop_input.crop)
     if cached_data and not cached_data.get("_is_fallback"):
         return cached_data
@@ -267,19 +189,27 @@ async def get_gemini_advice(weather_data, crop_input, market_data):
         prompt = _build_prompt(weather_data, crop_input, market_data)
         loop = asyncio.get_running_loop()
         response = await _generate_with_failover(prompt, loop)
-        
-        # Parse response...
-        parsed_data = _parse_gemini_response(response.text)
-        
-        # 1. SUCCESS: Save to cache with default 24h TTL (86400s)
-        save_gemini_cache(crop_input.lat, crop_input.lon, crop_input.crop, parsed_data, ttl_seconds=86400)
-        return parsed_data
+
+        data = clean_and_parse_json(response.text)
+        if not data:
+            raise ValueError("Could not parse JSON from AI response")
+
+        if "roadmap" in data:
+            try:
+                val = str(data["roadmap"].get("duration_days", 120))
+                matches = re.findall(r'\d+', val)
+                data["roadmap"]["duration_days"] = int(matches[0]) if matches else 120
+            except Exception:
+                data["roadmap"]["duration_days"] = 120
+            if not isinstance(data["roadmap"].get("pests"), list):
+                data["roadmap"]["pests"] = ["Common Pests"]
+
+        save_gemini_cache(crop_input.lat, crop_input.lon, crop_input.crop, data, ttl_seconds=86400)
+        return data
 
     except Exception as e:
         print(f"❌ Gemini Service Error: {e}")
         fallback_data = _get_fallback_data(crop_input.crop, str(e))
         fallback_data["_is_fallback"] = True
-        
-        # 2. FALLBACK: Save to cache with short 5m TTL (300s)
         save_gemini_cache(crop_input.lat, crop_input.lon, crop_input.crop, fallback_data, ttl_seconds=300)
         return fallback_data
