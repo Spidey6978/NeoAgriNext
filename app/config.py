@@ -9,6 +9,7 @@ class Config:
     # Safely pulling the keys from the .env file!
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
+    MAPBOX_ACCESS_TOKEN = os.getenv("MAPBOX_ACCESS_TOKEN", "")
 
     # --- GOOGLE EARTH ENGINE ---
     GEE_PROJECT_ID = os.getenv("GEE_PROJECT_ID", "")

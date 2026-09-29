@@ -4,10 +4,9 @@ import json
 import time
 from app.config import settings
 from app.services.cache_service import DB_NAME
-from geopy.geocoders import Nominatim
 from app.services.imd_service import get_imd_ground_reading
+from app.services.maps_service import reverse_geocode_mapbox
 
-# Remove hardcoded key if it exists, rely on settings
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # --- CACHE HELPERS ---
@@ -91,17 +90,9 @@ async def get_current_weather(lat: float, lon: float):
             return {"error": str(e)}
 
 async def _reverse_geocode_admin(lat, lon):
-    try:
-        geolocator = Nominatim(user_agent=settings.USER_AGENT)
-        loc = geolocator.reverse((lat, lon), language="en", timeout=5)
-        if loc:
-            addr = loc.raw.get("address", {})
-            district = addr.get("state_district") or addr.get("county") or ""
-            state = addr.get("state", "")
-            return district, state
-    except Exception as e:
-        print(f"⚠️ Reverse geocode failed: {e}")
-    return "", ""
+    """Uses Mapbox (with Nominatim fallback) to get district and state."""
+    result = await reverse_geocode_mapbox(lat, lon)
+    return result.get("district", ""), result.get("state", "")
 
 
 async def get_hyperlocal_weather(lat: float, lon: float):

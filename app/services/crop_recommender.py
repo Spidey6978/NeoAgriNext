@@ -3,7 +3,7 @@ import asyncio
 import requests
 from bs4 import BeautifulSoup
 import re
-from geopy.geocoders import Nominatim
+from app.services.maps_service import reverse_geocode_mapbox
 from google import genai
 from app.config import settings
 
@@ -25,27 +25,23 @@ MODEL_CANDIDATES = [
 MODEL_CANDIDATES = [m for m in dict.fromkeys(MODEL_CANDIDATES) if m]
 
 async def _generate_recommendation_with_failover(prompt, loop):
-    """Failover generator that cycles through available models on 429/404 errors."""
+    """Failover generator that cycles through available models on 429/503/404 errors."""
     backoffs = [5, 10]
     for model_name in MODEL_CANDIDATES:
         for attempt in range(len(backoffs) + 1):
             try:
-                # Synchronous client call inside executor
                 response = await loop.run_in_executor(
-                    None, 
-                    lambda: client.models.generate_content(
-                        model=model_name,
-                        contents=prompt
-                    )
+                    None,
+                    lambda: client.models.generate_content(model=model_name, contents=prompt)
                 )
                 return response.text
             except Exception as e:
                 msg = str(e).lower()
-                if "429" in msg or "quota" in msg:
+                if "429" in msg or "quota" in msg or "503" in msg or "unavailable" in msg or "high demand" in msg:
                     if attempt < len(backoffs):
                         await asyncio.sleep(backoffs[attempt])
                         continue
-                    print(f"⚠️ Model {model_name} rate limited. Switching candidate...")
+                    print(f"⚠️ Model {model_name} rate-limited/unavailable. Switching candidate...")
                     break
                 if "404" in msg or "not found" in msg:
                     print(f"⚠️ Model {model_name} unavailable. Switching candidate...")
@@ -138,16 +134,12 @@ async def get_crop_recommendations(lat: float, lon: float):
     
     # 1. Geocoding
     try:
-        geolocator = Nominatim(user_agent=settings.USER_AGENT)
-        location = await loop.run_in_executor(None, lambda: geolocator.reverse((lat, lon), language='en', timeout=5))
-        
-        if location:
-            address = location.raw.get('address', {})
-            district = address.get('state_district', '') or address.get('county', '')
-            state = address.get('state', '')
-            if state: 
-                state_context = state
-            location_name = f"{district}, {state}" if district else state
+        geo = await reverse_geocode_mapbox(lat, lon)
+        district = geo.get("district", "")
+        state = geo.get("state", "")
+        if state:
+            state_context = state
+        location_name = f"{district}, {state}" if district else state
     except Exception as e:
         print(f"⚠️ Geocoding Warning: {e}")
 

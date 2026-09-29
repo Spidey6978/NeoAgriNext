@@ -87,6 +87,9 @@ from app.services.crop_recommender import get_crop_recommendations
 from app.services.schedule_service import generate_farm_schedule
 from app.services.analytics_service import AgriAnalyticsEngine
 from app.routers import cache_dashboard
+from app.services.maps_service import reverse_geocode_mapbox
+from app.services.treatment_service import get_organic_treatment
+from app.services.regenerative_engine import get_regenerative_recommendation
 
 app = FastAPI(title="AgriNext API", version="1.0.0")
 
@@ -170,3 +173,15 @@ async def analyze_crop(data: CropInput):
         "roadmap": roadmap,
         "satellite": satellite_data,
     }
+
+@app.get("/location/geocode")
+async def location_geocode(lat: float, lon: float):
+    return await reverse_geocode_mapbox(lat, lon)
+
+@app.get("/treatment/organic")
+def organic_treatment(disease: str):
+    return get_organic_treatment(disease)
+
+@app.get("/recommend/regenerative")
+async def recommend_regenerative(lat: float, lon: float, n: float = 280, p: float = 15, k: float = 150):
+    return await get_regenerative_recommendation(lat, lon, n, p, k)

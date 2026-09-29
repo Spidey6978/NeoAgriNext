@@ -94,7 +94,7 @@ async def _generate_with_failover(prompt, loop, max_model_switches=6):
                 msg = str(e).lower()
                 print(f"❌ '{model_name}' failed: {e}")
 
-                if "429" in msg or "quota" in msg:
+                if "429" in msg or "quota" in msg or "503" in msg or "unavailable" in msg or "high demand" in msg:
                     if attempt < len(backoffs):
                         wait = backoffs[attempt]
                         print(f"⏳ '{model_name}' rate-limited, retrying in {wait}s...")

@@ -38,7 +38,7 @@ async def _generate_news_with_failover(prompt, loop):
                 return response.text
             except Exception as e:
                 msg = str(e).lower()
-                if "429" in msg or "quota" in msg:
+                if "429" in msg or "quota" in msg or "503" in msg or "unavailable" in msg or "high demand" in msg:
                     if attempt < len(backoffs):
                         await asyncio.sleep(backoffs[attempt])
                         continue
