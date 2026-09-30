@@ -273,13 +273,19 @@ from app.services.cache_service import init_db
 from app.services.ndvi_service import get_satellite_analysis 
 from app.services.news_service import get_agri_news # <--- Added News Service
 from app.routers import cache_dashboard
+from app.routers import dpg_router # <--- Added DPG Router
 from app.services.schedule_service import generate_farm_schedule # <--- New Import
 from app.schemas.input_schema import FarmScheduleResponse # <--- New Import
 from app.services.analytics_service import AgriAnalyticsEngine # <--- New Import
+import asyncio
 
 
 
-app = FastAPI()
+app = FastAPI(
+    title="AgriNext DPG API",
+    description="Interoperable Digital Agriculture Network OpenAPI 3.0",
+    version="1.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -290,6 +296,8 @@ app.add_middleware(
 )
 
 app.include_router(cache_dashboard.router)
+app.include_router(dpg_router.router) # <--- Include DPG router
+
 
 @app.on_event("startup")
 async def startup_event():

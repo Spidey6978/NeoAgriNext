@@ -26,14 +26,53 @@ import com.example.agrinext.ui.components.Speedometer
 import com.example.agrinext.util.LanguageManager
 import java.time.LocalDate
 
+import com.example.agrinext.data.FarmTask
+import com.example.agrinext.data.AgriNextApi
+import com.example.agrinext.Config
+import com.google.gson.GsonBuilder
+import okhttp3.OkHttpClient
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
+import android.util.Log
+
 @Composable
 fun HomeScreen(
     onWeatherClick: () -> Unit,
     onNewsClick: (Int) -> Unit
 ) {
-    // Local state for tasks (demonstration using dummy schedule)
-    var homeTasks by remember {
-        mutableStateOf(FarmScheduleRepository.getSchedule(LocalDate.now()))
+    var homeTasks by remember { mutableStateOf<List<FarmTask>>(emptyList()) }
+    var farmScore by remember { mutableStateOf(85f) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    val retrofit = remember {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+        val gson = GsonBuilder().setLenient().create()
+        Retrofit.Builder()
+            .baseUrl(Config.BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(AgriNextApi::class.java)
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            val response = retrofit.getFarmSchedule(crop = "rice")
+            if (response.isSuccessful && response.body() != null) {
+                homeTasks = response.body()!!.tasks
+                farmScore = response.body()!!.farm_score.toFloat()
+            }
+        } catch (e: Exception) {
+            Log.e("HomeScreen", "Error fetching schedule: ${e.message}")
+            // Fallback to static if network fails
+            homeTasks = com.example.agrinext.data.FarmScheduleRepository.getSchedule(LocalDate.now())
+        } finally {
+            isLoading = false
+        }
     }
 
     Scaffold(
@@ -74,7 +113,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(24.dp))
 
                             Speedometer(
-                                currentValue = 85f,
+                                currentValue = farmScore,
                                 maxValue = 100f,
                                 modifier = Modifier
                                     .height(250.dp)

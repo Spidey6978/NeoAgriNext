@@ -19,7 +19,7 @@ def init_earth_engine():
     
     # 1. Check if library exists first
     if ee is None:
-        print("⚠️ 'earthengine-api' not installed. Skipping Real Satellite (Using Simulation).")
+        print("WARNING: 'earthengine-api' not installed. Skipping Real Satellite (Using Simulation).")
         return False
 
     try:
