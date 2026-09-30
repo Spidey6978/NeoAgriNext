@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.agrinext"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -59,41 +59,36 @@ dependencies {
     // ML Kit for on-device Translation
 //    implementation(libs.translate)
 //    implementation(libs.gson)
+
+    // Image Loading
     implementation("io.coil-kt:coil-compose:2.4.0")
 
+    // Location & Maps
     implementation("com.google.android.gms:play-services-location:21.0.1")
-
     implementation("com.google.maps.android:maps-compose:4.3.3")
     implementation("com.google.android.gms:play-services-maps:18.2.0")
 
-    implementation("androidx.compose.material:material-icons-extended")
-    // 1. Navigation (This fixes 'NavHost' and 'rememberNavController')
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-
+    // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // 2. Firebase (This fixes 'FirebaseAuth' and auth errors)
-    implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
-    implementation("com.google.firebase:firebase-auth-ktx")
-
-    // Import the Firebase BoM
-    implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
-    implementation("com.google.firebase:firebase-analytics")
-
-    // Firebase Authentication
-    implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
-    // Compose dependencies (Standard)
-    implementation("androidx.compose.material3:material3:1.2.0")
-
-    implementation("androidx.activity:activity-compose:1.8.2")
-    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-
+    // Retrofit (Network requests)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 
+    // Firebase (Explicit versions to prevent empty resolution errors)
+    implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
+
+    // --- CameraX for Leaf Disease Capture ---
+    val cameraxVersion = "1.3.1"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+
+    // AndroidX & Compose (Using Version Catalog 'libs.' to prevent duplicates)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -102,6 +97,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("androidx.compose.material:material-icons-extended")
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -109,6 +107,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
-    implementation("com.google.code.gson:gson:2.10.1")
 }

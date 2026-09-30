@@ -25,11 +25,15 @@ import com.example.agrinext.ui.components.OngoingScheduleComponent
 import com.example.agrinext.ui.components.Speedometer
 import com.example.agrinext.util.LanguageManager
 import java.time.LocalDate
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun HomeScreen(
     onWeatherClick: () -> Unit,
-    onNewsClick: (Int) -> Unit
+    onNewsClick: (Int) -> Unit,
+    onDiagnosticClick: () -> Unit = {},
+    onAdvisoryClick: () -> Unit = {}
 ) {
     // Local state for tasks (demonstration using dummy schedule)
     var homeTasks by remember {
@@ -89,6 +93,40 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.outline
                             )
+                        }
+                    }
+                }
+            }
+
+            // --- Quick Action Cards for Diagnostic & Advisory ---
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        onClick = onDiagnosticClick
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("📸 Leaf Doctor", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("AI disease detection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        onClick = onAdvisoryClick
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("🛰️ Agro-Advisory", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("NDVI & Soil health", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
                         }
                     }
                 }

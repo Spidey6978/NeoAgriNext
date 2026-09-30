@@ -104,7 +104,9 @@ class MainActivity : ComponentActivity() {
                                     onWeatherClick = { navController.navigate("weather") },
                                     onNewsClick = { newsId ->
                                         navController.navigate(Screen.IndividualNews.createRoute(newsId))
-                                    }
+                                    },
+                                    onDiagnosticClick = { navController.navigate(Screen.DiseaseDiagnostic.route) },
+                                    onAdvisoryClick = { navController.navigate(Screen.AdvisoryDashboard.route) }
                                 )
                             }
 
@@ -185,6 +187,16 @@ class MainActivity : ComponentActivity() {
 
                             composable("weather") {
                                 WeatherScreen(onBack = { navController.popBackStack() })
+                            }
+
+                            // Inside your NavHost block in MainActivity.kt, add:
+
+                            composable(Screen.DiseaseDiagnostic.route) {
+                                DiseaseDiagnosticScreen(onBack = { navController.popBackStack() })
+                            }
+
+                            composable(Screen.AdvisoryDashboard.route) {
+                                AdvisoryDashboardScreen(onBack = { navController.popBackStack() })
                             }
                         }
 
