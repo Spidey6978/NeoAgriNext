@@ -116,7 +116,7 @@ async def get_imd_ground_reading(lat: float, lon: float, state_name: str):
             "humidity_pct": _f("RH"),
             "wind_speed_kmph": _f("WIND_SPEED"),
             "mslp_hpa": _f("MSLP"),
-            "rainfall_24h_mm": _f("Feel Like"),  # note: field name below
+            "rainfall_24h_mm": None,  # Dropped "Feel Like" to prevent data corruption
             "source": "IMD AWS/ARG (ground station)",
         }
     except Exception as e:

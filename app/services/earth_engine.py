@@ -41,15 +41,14 @@ def init_earth_engine():
         print(f"⚠️ GEE Authentication missing/failed ({e}). Using Simulation Mode.")
         return False
 
-
 def get_sentinel_collection(lat, lon, date_start, date_end):
     if not GEE_INITIALIZED or ee is None:
         return None
     try:
         point = ee.Geometry.Point([lon, lat])
         s2 = (
-            ee.ImageCollection("COPERNICUS/S2_SR")
-            .filterBounds(point)
+            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(point.buffer(100))
             .filterDate(date_start, date_end)
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
             .sort("CLOUDY_PIXEL_PERCENTAGE")

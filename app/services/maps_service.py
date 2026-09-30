@@ -1,7 +1,6 @@
 import httpx
 from app.config import settings
-from app.services.maps_service import reverse_geocode_mapbox
-
+from geopy.geocoders import Nominatim
 MAPBOX_GEOCODE_URL = "https://api.mapbox.com/geocoding/v5/mapbox.places/{lon},{lat}.json"
 
 

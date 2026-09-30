@@ -77,7 +77,8 @@ async def get_current_weather(lat: float, lon: float):
                     "humidity": data["main"]["humidity"],
                     "description": data["weather"][0]["description"],
                     "location": data["name"],
-                    "wind_speed": data["wind"]["speed"]
+                    "wind_speed": data["wind"]["speed"],
+                    "rain": data.get("rain", {})
                 }
                 # 2. SAVE CACHE
                 save_weather_cache(lat, lon, result)

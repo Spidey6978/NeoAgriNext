@@ -102,8 +102,12 @@ async def get_real_market_price(lat: float, lon: float, crop: str):
 
     print(f"\n🌍 HYBRID ENGINE: Analyzing {crop} at {lat}, {lon}...")
 
+    geo = await reverse_geocode_mapbox(lat, lon)
+    district = geo.get("district", "Unknown")
+    state = geo.get("state", "Unknown")
+    country_code = "IN" if state != "Unknown" else "DEFAULT"
+
     # A. Get Location Details
-    country_code, state, district = get_location_details(lat, lon)
     econ = GLOBAL_ECONOMICS.get(country_code, GLOBAL_ECONOMICS["DEFAULT"])
     
     # B. ATTEMPT LIVE SCRAPING
@@ -186,21 +190,6 @@ async def get_real_market_price(lat: float, lon: float, crop: str):
     return result
 
 # --- HELPERS ---
-
-def get_location_details(lat, lon):
-    try:
-        geolocator = Nominatim(user_agent=USER_AGENT)
-        location = geolocator.reverse((lat, lon), language='en', timeout=5)
-        if location:
-            addr = location.raw.get('address', {})
-            return (
-                addr.get('country_code', '').upper(),
-                addr.get('state', 'Unknown'),
-                addr.get('state_district', 'Unknown').replace(" District", "")
-            )
-    except:
-        pass
-    return "DEFAULT", "Unknown", "Unknown"
 
 def fetch_markets_from_osm(lat, lon):
     """
